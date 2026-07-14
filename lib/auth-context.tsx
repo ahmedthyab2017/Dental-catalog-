@@ -3,6 +3,9 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { isInAppBrowser } from '@/lib/in-app-browser';
+
+export const IN_APP_BROWSER_ERROR = 'IN_APP_BROWSER';
 
 interface AuthContextType {
   user: User | null;
@@ -20,7 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in
     supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
@@ -33,15 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: { clinic_name: clinicName },
-        },
+        options: { data: { clinic_name: clinicName } },
       });
-
       if (error) throw error;
-
       if (data.user) {
-        // Create clinic entry
         const { error: clinicError } = await supabase.from('clinics').insert([
           {
             user_id: data.user.id,
@@ -50,7 +47,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             subscription_tier: 'free',
           },
         ]);
-
         if (clinicError) throw clinicError;
       }
     } finally {
@@ -61,10 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     } finally {
       setLoading(false);
@@ -82,12 +75,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
+    if (isInAppBrowser()) {
+      throw new Error(IN_APP_BROWSER_ERROR);
+    }
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
         },
       });
       if (error) throw error;
